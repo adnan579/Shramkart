@@ -1,9 +1,16 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { loadConfig } from './config.ts';
 import { formatFindings, reviewConfig } from './lib/doctor.ts';
 import { createDb, migrate, type Db } from './db.ts';
 import type { AppContext } from './types.ts';
 
 let contextPromise: Promise<AppContext> | undefined;
+
+/**
+ * Tests run a request inside `contextOverride.run(ctx, ...)` so routes and pages use that context (its own database
+ * connection, its own fake services) instead of the shared one built from environment variables. Never set in production.
+ */
+export const contextOverride = new AsyncLocalStorage<AppContext>();
 
 async function initialize(): Promise<AppContext> {
   let stage = 'config';
@@ -30,6 +37,8 @@ async function initialize(): Promise<AppContext> {
 }
 
 export function getServerContext(): Promise<AppContext> {
+  const injected = contextOverride.getStore();
+  if (injected) return Promise.resolve(injected);
   contextPromise ??= initialize().catch((error) => {
     contextPromise = undefined;
     throw error;

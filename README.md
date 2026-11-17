@@ -19,14 +19,14 @@ A two-way marketplace for blue and grey-collar manufacturing work in India. Veri
 
 ## How it is built
 
-- **Front end:** React 19, Next.js App Router, and Tailwind. The main screen UI is one client component (`src/App.tsx`) mounted by the catch-all page; the job pages, `/employers`, `/about`, the sitemap and the staff console are native routes. The session is an httpOnly cookie; the browser only holds what the server sends for that person's role (`/api/bootstrap`).
-- **Back end:** Express and PostgreSQL (`server/`). Every input is checked with zod. Ownership and role checks are in SQL. Credits and payments are atomic and run once.
-- **Security:** hashed login codes with attempt limits, hashed session tokens, origin check on writes, strict content security policy in production, rate limits, append-only audit log.
-- **Hosting:** one Vercel deployment. Next.js builds and serves everything (there is no separate front-end build). `GET /api/health`, `GET /api/bootstrap`, `POST /api/jobs` and `PUT /api/jobs/:id` are native Next.js route handlers; every other `/api` route is the Express app, mounted through `app/api/[...path]/route.ts`.
+- **Front end:** React 19, Next.js App Router, and Tailwind. Every screen is a real route: `/`, `/about`, `/jobs`, `/jobs/[id]`, `/employers`, `/employers/talent`, `/employers/dashboard`, `/me` (with `/me/applications`, `/me/id-card`, `/me/profile`), `/login`, `/privacy`, `/terms` and the staff console at `/admin`. One shared layout (`app/(public)/layout.tsx`) provides the header, bottom bar, footer, dialogs, toast and analytics, and one data provider (`src/shell/AppProvider.tsx`) holds what the server sent. Pages read it with `useApp()`. The session is an httpOnly cookie; page HTML carries only public data, and a signed-in person's own data comes from `/api/bootstrap`.
+- **Back end:** Next.js route handlers and PostgreSQL (`server/`). Every endpoint is a file under `app/api/**/route.ts` wrapped in `nativeRoute` (`server/next/native.ts`), with the logic in `server/handlers/`. Every input is checked with zod. Ownership and role checks are in SQL. Credits and payments are atomic and run once.
+- **Security:** hashed login codes with attempt limits, hashed session tokens, origin check on writes (in `proxy.ts` and again in every route), strict content security policy in production, rate limits, append-only audit log.
+- **Hosting:** one Vercel deployment. Next.js builds and serves everything (there is no separate front-end build, and no Express). Unknown `/api` paths answer a JSON 404 from `app/api/[...path]/route.ts`.
 
 Brand files are in `public/`: `logo.svg` (full badge with tagline), `icon.svg` (badge without the tagline, used in the app and as the favicon), and the PNG, ICO and maskable versions for browsers, phones and installed web apps.
 
-Folder map: `app/` (Next.js pages, staff console and route handlers), `proxy.ts` (page security headers), `instrumentation.ts` (error reporting), `server/` (API), `src/` (UI components, data, helpers), `server/migrations/` (SQL), `tests/` (API tests), `e2e/` (browser tests), `scripts/` (migrate, create admin, local Postgres, lint, smoke test), `docs/` (guides).
+Folder map: `app/` (Next.js pages, staff console and route handlers), `proxy.ts` (page security headers and the cross-site write guard), `instrumentation.ts` (error reporting), `server/` (handlers, services, auth), `src/` (UI components, `shell/` provider and layout pieces, `screens/`, data, helpers), `server/migrations/` (SQL), `tests/` (API tests), `e2e/` (browser tests), `scripts/` (migrate, create admin, local Postgres, lint, smoke test), `docs/` (guides).
 
 ## Run it on your computer
 

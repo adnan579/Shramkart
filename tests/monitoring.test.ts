@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import request from 'supertest';
+import request from './helpers/native-client.ts';
 import { makeEnv } from './helpers/app.ts';
 import { errorLine, framesOf, parseDsn, pingHeartbeat, reportError, resetReportLimits, scrub, sentryEnvelope } from '../server/lib/monitoring.ts';
 import { nativeRoute } from '../server/next/native.ts';
@@ -133,7 +133,7 @@ describe('wired into the API', () => {
     (env.db as any).query = (sql: string, ...rest: unknown[]) => (match.test(String(sql)) ? Promise.reject(new Error('boom postgres://hj:secret@db.internal/app')) : (realQuery as any)(sql, ...rest));
   };
 
-  it('reports a 500 from the Express API once, hides the details from the caller, and keeps secrets out of the report', async () => {
+  it('reports a 500 from the API once, hides the details from the caller, and keeps secrets out of the report', async () => {
     breakQueries(/FROM jobs|COUNT|count/);
     const res = await request(env.app).get('/api/bootstrap?token=abc');
     expect(res.status).toBe(500);

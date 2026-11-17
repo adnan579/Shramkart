@@ -29,15 +29,3 @@ export interface AppContext {
   config: Config;
   deps: Deps;
 }
-
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace Express {
-    interface Request {
-      auth?: AuthContext;
-      /** Set only for a valid admin console session (cookie hj_admin). */
-      admin?: AuthContext;
-      ctx: AppContext;
-    }
-  }
-}

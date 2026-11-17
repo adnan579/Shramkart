@@ -1,9 +1,7 @@
-import type { Request, Response, NextFunction } from 'express';
 import type { Queryable } from '../db.ts';
 import type { AppContext, AuthContext } from '../types.ts';
 import { newToken, sha256 } from '../lib/ids.ts';
-import { HttpError, forbidden, unauthorized } from '../lib/errors.ts';
-import { can } from '../lib/permissions.ts';
+import { clearCookie, serializeCookie } from '../lib/cookies.ts';
 
 export const COOKIE_NAME = 'hj_session';
 export const SESSION_TTL_SEC = 60 * 60 * 24 * 30;
@@ -42,18 +40,12 @@ export async function createSession(
   return { token, id: rows[0]!.id };
 }
 
-export function setSessionCookie(res: Response, token: string, secure: boolean): void {
-  res.cookie(COOKIE_NAME, token, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure,
-    path: '/',
-    maxAge: SESSION_TTL_SEC * 1000,
-  });
+export function sessionCookie(token: string, secure: boolean): string {
+  return serializeCookie(COOKIE_NAME, token, { httpOnly: true, sameSite: 'lax', secure, path: '/', maxAgeSec: SESSION_TTL_SEC });
 }
 
-export function clearSessionCookie(res: Response, secure: boolean): void {
-  res.clearCookie(COOKIE_NAME, { httpOnly: true, sameSite: 'lax', secure, path: '/' });
+export function clearedSessionCookie(secure: boolean): string {
+  return clearCookie(COOKIE_NAME, { httpOnly: true, sameSite: 'lax', secure, path: '/' });
 }
 
 export async function loadAuth(ctx: AppContext, token: string | undefined): Promise<AuthContext | null> {
@@ -113,11 +105,11 @@ export async function createAdminSession(q: Queryable, input: { accountId: strin
   return { token, id: rows[0]!.id };
 }
 
-export function setAdminCookie(res: Response, token: string, secure: boolean): void {
-  res.cookie(ADMIN_COOKIE, token, { httpOnly: true, sameSite: 'strict', secure, path: '/', maxAge: ADMIN_ABSOLUTE_SEC * 1000 });
+export function adminCookie(token: string, secure: boolean): string {
+  return serializeCookie(ADMIN_COOKIE, token, { httpOnly: true, sameSite: 'strict', secure, path: '/', maxAgeSec: ADMIN_ABSOLUTE_SEC });
 }
-export function clearAdminCookie(res: Response, secure: boolean): void {
-  res.clearCookie(ADMIN_COOKIE, { httpOnly: true, sameSite: 'strict', secure, path: '/' });
+export function clearedAdminCookie(secure: boolean): string {
+  return clearCookie(ADMIN_COOKIE, { httpOnly: true, sameSite: 'strict', secure, path: '/' });
 }
 
 export async function loadAdminAuth(ctx: AppContext, token: string | undefined): Promise<AuthContext | null> {
@@ -141,43 +133,4 @@ export async function loadAdminAuth(ctx: AppContext, token: string | undefined):
     );
   }
   return { sessionId: r.session_id, accountId: r.account_id, role: 'admin', adminRole: r.admin_role, phone: '', email: r.email, displayName: r.display_name, mustChangePassword: r.must_change_password };
-}
-
-export function attachAuth(ctx: AppContext) {
-  return async (req: Request, _res: Response, next: NextFunction) => {
-    req.ctx = ctx;
-    try {
-      const token = parseCookies(req.headers.cookie)[COOKIE_NAME];
-      req.auth = (await loadAuth(ctx, token)) ?? undefined;
-      const adminToken = parseCookies(req.headers.cookie)[ADMIN_COOKIE];
-      if (adminToken) req.admin = (await loadAdminAuth(ctx, adminToken)) ?? undefined;
-      next();
-    } catch (err) {
-      next(err);
-    }
-  };
-}
-
-export function requireAuth(req: Request, _res: Response, next: NextFunction) {
-  if (!req.auth) return next(unauthorized());
-  next();
-}
-
-export function requireRole(...roles: AuthContext['role'][]) {
-  return (req: Request, _res: Response, next: NextFunction) => {
-    if (!req.auth) return next(unauthorized());
-    if (!roles.includes(req.auth.role)) return next(forbidden());
-    next();
-  };
-}
-
-/** Admin API guard: a valid admin session, a finished password change, and the permission for this area. */
-export function requireAdmin(permission?: import('../lib/permissions.ts').Permission) {
-  return (req: Request, _res: Response, next: NextFunction) => {
-    if (!req.admin) return next(unauthorized('Please sign in to the admin console.'));
-    if (req.admin.mustChangePassword) return next(new HttpError(403, 'You must choose a new password first.', { code: 'PASSWORD_CHANGE_REQUIRED' }));
-    if (permission && !can(req.admin.adminRole, permission)) return next(forbidden('Your role does not allow this.'));
-    req.auth = req.admin; // so shared helpers (audit, respond) see the staff member
-    next();
-  };
 }

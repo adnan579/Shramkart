@@ -14,7 +14,7 @@ function splitInput(input: ReturnType<typeof jobInput.parse>) {
   return { title, trade, state, industrialHub, takeHomeSalary, openingsCount, vacanciesLeft, isActive, data: { ...rest, openingsCount, title, trade, state, industrialHub, takeHomeSalary } };
 }
 
-/** Shared by the Express router and the native Next.js route: the job as its owner sees it. */
+/** Shared by the job route handlers: the job as its owner sees it. */
 export async function createJob(ctx: AppContext, auth: AuthContext | undefined, body: unknown) {
   const eid = employerWriter({ auth });
   const input = parse(jobInput, body);

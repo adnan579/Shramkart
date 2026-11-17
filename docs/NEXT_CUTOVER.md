@@ -11,7 +11,7 @@ Everything below is safe to do from a Vercel preview deployment of this branch. 
 | `npm run lint` | Types are correct (strict) and Biome finds no errors or new warnings |
 | `npm run build` | Next.js builds every route |
 | Production smoke test (`scripts/preview-check.mjs`) | The production build starts, sends the strict page policy, every page type carries its nonce, visitors see no HR contacts, `/admin` is `noindex` + `no-store`, API headers are present |
-| `npm test` | 135+ API, security and native-route parity tests |
+| `npm test` | 180+ API, security and route tests |
 | `npm run e2e` | Factory → admin approval → job → worker applies → offer → accept → both confirm joining |
 
 You can run the smoke test against any deployment:
@@ -54,9 +54,9 @@ The smoke test cannot sign in, so do these by hand, once, on the preview URL. Op
 - **From git**: the last Vite + Express build is the `vite-final` tag (commit `5942508`). Phase 7 deleted the Vite files from `main`, so to go back, redeploy that tag from Vercel (Deployments → Redeploy a deployment built from it), or branch from it. Do not mix it with newer database migrations: those are additive, but check `server/migrations/` first.
 - The database is the same in both versions. This migration adds no tables or columns, so rolling back needs no data change.
 
-## 6. What still goes through Express (Phase 5 is partly done)
+## 6. Express is gone (Phase 5 is finished)
 
-Native Next.js routes: `GET /api/health`, `GET /api/bootstrap`, `POST /api/jobs`, `PUT /api/jobs/:id`. Everything else is served by the Express app through `app/api/[...path]/route.ts`, with identical behaviour. Port the rest one router at a time using `server/next/native.ts` and add a parity block to `tests/native-routes.test.ts` for each. Port login last. Phase 7 is done: `server.ts`, `vite.config.ts`, `index.html`, `admin.html`, the old `src/main.tsx` and `src/admin/main.tsx` entries and the Vite dependencies are gone. The Express app itself stays until the remaining routers are ported.
+Every endpoint is a native route handler (`app/api/**/route.ts`, logic in `server/handlers/`). `server/app.ts`, `server/routes/`, Express, `serverless-http` and `supertest` have been deleted. To add an endpoint: write a handler in `server/handlers/`, add a route file that exports `nativeRoute(handler)` for the methods it handles and `apiNotFound` for the rest, and update `tests/api-contract-baseline.test.ts`. The `vite-final` tag is still the way back to the Vite + Express build.
 
 ## 7. Known differences from the Vite build
 

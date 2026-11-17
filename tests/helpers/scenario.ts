@@ -1,8 +1,7 @@
-import request from 'supertest';
+import type { Agent } from './native-client.ts';
 import type { TestEnv } from './app.ts';
 import { loginAdmin, registerEmployer, registerWorker } from './app.ts';
 
-type Agent = ReturnType<typeof request.agent>;
 
 export const JOB = {
   title: 'Fitter - Assembly Line', trade: 'Fitter (Assembly & Bench)', category: 'skilled',
