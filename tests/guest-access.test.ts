@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import request from 'supertest';
+import request from './helpers/native-client.ts';
 import { makeEnv } from './helpers/app.ts';
 import { JOB, postJob, verifiedEmployer, worker } from './helpers/scenario.ts';
 

@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import request from 'supertest';
+import request from './helpers/native-client.ts';
 import { makeEnv, nextPhone, otpFor, registerEmployer, registerWorker } from './helpers/app.ts';
 
 const env = makeEnv();

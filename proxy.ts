@@ -1,6 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { apiHeaders, isSameOrigin, MUTATING_METHODS } from './server/lib/security-headers';
+
+/**
+ * API requests: the first line of defence against cross-site writes. A browser write that names another site in its
+ * Origin header is refused here, before any route code runs. (`nativeRoute` repeats the check, so a route is still
+ * safe if this file is ever bypassed.) Calls with no Origin (Razorpay's webhook, cron, curl) pass through.
+ */
+function guardApi(request: NextRequest): NextResponse {
+  if (MUTATING_METHODS.has(request.method) && !isSameOrigin(request.headers.get('origin'), request.headers.get('host'), process.env.APP_URL)) {
+    return NextResponse.json({ error: 'Cross-site request blocked.' }, { status: 403, headers: apiHeaders(process.env.NODE_ENV === 'production') });
+  }
+  return NextResponse.next();
+}
 
 export function proxy(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith('/api/')) return guardApi(request);
   const isAdmin = request.nextUrl.pathname === '/admin' || request.nextUrl.pathname.startsWith('/admin/');
   if (process.env.NODE_ENV !== 'production') {
     const response = NextResponse.next();
@@ -44,5 +58,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!api/|_next/static|_next/image|favicon.ico|manifest.json|icon.svg).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|icon.svg).*)'],
 };

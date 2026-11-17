@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import request from 'supertest';
+import request from './helpers/native-client.ts';
 import { ADMIN_TEST_PASSWORD, loginAdmin, makeEnv, reloginAdmin } from './helpers/app.ts';
 import { postJob, verifiedEmployer, worker } from './helpers/scenario.ts';
 import { createAdminAccount } from '../server/services/adminAccounts.ts';

@@ -1,12 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { cookies } from 'next/headers';
-import App from '../../../src/App';
-import { COOKIE_NAME, loadAuth } from '../../../server/auth/session';
-import { languageForCookie } from '../../../src/utils/routes';
-import { buildBootstrap } from '../../../server/services/bootstrap';
+import { WorkerFeedScreen } from '../../../src/screens/Screens';
+import { pageAuth } from '../../../server/next/page-data';
 import { publicBootstrap, publicJobList } from '../../../server/services/publicJobs';
-import { getServerContext } from '../../../server/runtime';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,8 +19,6 @@ const inr = (amount: number) => `₹${amount.toLocaleString('en-IN')}`;
 
 export default async function JobsPage({ searchParams }: JobsPageProps) {
   const query = await searchParams;
-  const cookieStore = await cookies();
-  const language = languageForCookie(cookieStore.get('hj_language')?.value);
   const mode = typeof query.mode === 'string' ? query.mode : 'jobs';
   const hub = typeof query.hub === 'string' ? query.hub.trim() : '';
   let jobs: Awaited<ReturnType<typeof publicJobList>> = [];
@@ -32,13 +26,8 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
   let unavailable = false;
 
   try {
-    const ctx = await getServerContext();
-    const token = cookieStore.get(COOKIE_NAME)?.value;
-    const auth = await loadAuth(ctx, token);
-    if (mode === 'jobs' && auth?.role === 'worker') {
-      const data = await buildBootstrap(ctx, auth);
-      return <App initialRole="worker" initialLanguage={language} initialData={{ jobs: data.jobs, stats: data.stats, hiringDrives: data.hiringDrives }} />;
-    }
+    // A signed-in worker gets the full feed (the shared layout already holds their snapshot); everyone else gets the public list.
+    if (mode === 'jobs' && (await pageAuth())?.role === 'worker') return <WorkerFeedScreen />;
     if (mode === 'drives') {
       const data = await publicBootstrap();
       drives = (data.hiringDrives ?? []).filter((drive) => !hub || `${drive.industrialHub} ${drive.venue}`.toLowerCase().includes(hub.toLowerCase()));
@@ -51,16 +40,7 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
   }
 
   return (
-    <main className="min-h-screen bg-[var(--sk-canvas)]">
-      <header className="border-b border-[var(--sk-border)] bg-white">
-        <nav className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6" aria-label="Main">
-          <Link href="/" className="text-lg font-extrabold text-[var(--sk-ink)]">Shramkart</Link>
-          <div className="flex gap-4 text-sm font-semibold">
-            <Link href="/about" className="text-[var(--sk-body)] hover:text-[var(--sk-ink)]">About</Link>
-            <Link href="/employers" className="text-[var(--sk-body)] hover:text-[var(--sk-ink)]">For employers</Link>
-          </div>
-        </nav>
-      </header>
+    <div className="min-h-full bg-[var(--sk-canvas)]">
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:py-12">
         <header className="mb-6 max-w-3xl">
           <p className="eyebrow">Verified opportunities</p>
@@ -112,6 +92,6 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
           </ul>
         ) : <p className="py-8 text-body text-[var(--sk-muted)]">No verified jobs match this location.</p>}
       </div>
-    </main>
+    </div>
   );
 }

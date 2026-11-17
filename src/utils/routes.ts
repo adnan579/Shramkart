@@ -29,3 +29,14 @@ export function workerTabForPath(pathname: string): WorkerTab {
 export function languageForCookie(value?: string): Language {
   return value === 'hi' || value === 'mr' || value === 'ta' || value === 'gu' ? value : 'en';
 }
+
+/** The URL of a tab of the worker's own page. */
+export function pathForWorkerTab(tab: WorkerTab): string {
+  return tab === 'inbox' ? '/me/applications' : tab === 'idcard' ? '/me/id-card' : tab === 'profile' ? '/me/profile' : '/me';
+}
+
+/** Pages that only a signed-in person of this kind may see. */
+export function roleNeededForPath(pathname: string): 'worker' | 'employer' | undefined {
+  const role = roleForPath(pathname);
+  return role === 'worker-profile' ? 'worker' : role === 'employer' || role === 'employer-profile' ? 'employer' : undefined;
+}

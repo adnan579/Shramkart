@@ -1,5 +1,4 @@
-import request from 'supertest';
-import { createApp } from '../../server/app.ts';
+import request, { createNativeApp, type Agent, type NativeApp } from './native-client.ts';
 import { loadConfig } from '../../server/config.ts';
 import { createDb, type Db } from '../../server/db.ts';
 import type { AppContext } from '../../server/types.ts';
@@ -10,8 +9,8 @@ import type { AdminRole } from '../../server/lib/permissions.ts';
 export interface TestEnv {
   ctx: AppContext;
   db: Db;
-  app: ReturnType<typeof createApp>;
-  agent: () => ReturnType<typeof request.agent>;
+  app: NativeApp;
+  agent: () => Agent;
   reset: () => Promise<void>;
   close: () => Promise<void>;
   fetchCalls: { url: string; init?: RequestInit }[];
@@ -32,7 +31,7 @@ export function makeEnv(envOverrides: Record<string, string | undefined> = {}): 
       }) as typeof fetch,
     },
   };
-  const app = createApp(ctx);
+  const app = createNativeApp(ctx);
   return {
     ctx, db, app, fetchCalls,
     agent: () => request.agent(app),
@@ -44,8 +43,6 @@ export function makeEnv(envOverrides: Record<string, string | undefined> = {}): 
     close: () => db.close(),
   };
 }
-
-type Agent = ReturnType<typeof request.agent>;
 
 let phoneCounter = 0;
 export function nextPhone(): string {

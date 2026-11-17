@@ -1,0 +1,121 @@
+import { parse } from '../lib/http.ts';
+import { applicationCreate, applicationPatch } from '../lib/schemas.ts';
+import { employerWriter, requireRole, workerId } from '../lib/guards.ts';
+import { badRequest, forbidden, notFound, unauthorized } from '../lib/errors.ts';
+import { newId } from '../lib/ids.ts';
+import { notify } from '../lib/audit.ts';
+import { sendWorkerStageAlert, type AlertInput } from '../auth/alertDelivery.ts';
+import { respond } from '../lib/respond.ts';
+import { PUBLIC_JOB_WHERE } from '../services/bootstrap.ts';
+import { appendHistory, event, markJoined } from '../services/pipeline.ts';
+import { canTransitionPipeline } from '../../src/modules/domain.ts';
+import { fmtDateTime } from '../lib/format.ts';
+import type { PipelineStage } from '../../src/types/index.ts';
+import type { NativeHandler } from '../next/native.ts';
+
+export const applicationCreateHandler: NativeHandler = async (c) => {
+  requireRole(c, 'worker');
+  const wid = workerId(c);
+  const { jobId } = parse(applicationCreate, c.body);
+  const created = await c.ctx.db.tx(async (q) => {
+    const job = (
+      await q.query(
+        `SELECT j.id, j.title, j.employer_id FROM jobs j JOIN employers e ON e.id = j.employer_id
+          WHERE j.id = $1 AND ${PUBLIC_JOB_WHERE}`,
+        [jobId]
+      )
+    ).rows[0];
+    if (!job) throw notFound('This job is no longer open.');
+    const w = (await q.query('SELECT name, trade FROM workers WHERE id = $1', [wid])).rows[0];
+    const id = newId('app');
+    const ins = await q.query(
+      `INSERT INTO applications (id, job_id, worker_id, employer_id, data) VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (job_id, worker_id) DO NOTHING RETURNING id`,
+      [id, jobId, wid, job.employer_id, JSON.stringify({ history: [event('Applied', 'worker', w.name, 'Applied with 1 tap from the job feed')] })]
+    );
+    if (!ins.rowCount) return false; // already applied: idempotent
+    await q.query(`INSERT INTO contact_unlocks (employer_id, worker_id, source) VALUES ($1,$2,'application') ON CONFLICT DO NOTHING`, [job.employer_id, wid]);
+    await notify(q, { role: 'employer', recipientId: job.employer_id, eventType: 'SHORTLISTED', title: `New applicant: ${w.name} (${w.trade})`, body: `Applied for ${job.title}. Their phone number is now visible to you.` });
+    return true;
+  });
+  return respond(c, {}, created ? 201 : 200);
+};
+
+export const applicationPatchHandler: NativeHandler = async (c) => {
+  const auth = c.auth;
+  if (!auth) throw unauthorized();
+  if (auth.role !== 'worker' && auth.role !== 'employer') throw forbidden();
+  const body = parse(applicationPatch, c.body);
+  const isWorker = auth.role === 'worker';
+  const ownerId = isWorker ? workerId(c) : employerWriter(c);
+
+  const pendingAlert: { workerId?: string; input?: AlertInput } = {};
+  await c.ctx.db.tx(async (q) => {
+    const row = (
+      await q.query(
+        `SELECT a.*, j.title AS job_title, w.name AS worker_name, e.company_name FROM applications a
+           JOIN jobs j ON j.id = a.job_id JOIN workers w ON w.id = a.worker_id JOIN employers e ON e.id = a.employer_id
+          WHERE a.id = $1 AND ${isWorker ? 'a.worker_id' : 'a.employer_id'} = $2 FOR UPDATE OF a`,
+        [c.params.id, ownerId]
+      )
+    ).rows[0];
+    if (!row) throw notFound('Application not found.'); // same answer whether it exists or not
+
+    const role = isWorker ? 'worker' : 'employer';
+    const actorName = isWorker ? row.worker_name : row.company_name;
+    const extra: Record<string, unknown> = {};
+
+    if (isWorker) {
+      if (body.interviewSlot) {
+        const cur = row.data?.interviewSlot ?? {};
+        extra.interviewSlot = { ...cur, confirmedSlot: body.interviewSlot.confirmedSlot ?? cur.confirmedSlot, confirmedByWorker: body.interviewSlot.confirmedByWorker ?? cur.confirmedByWorker };
+      }
+      if (body.workerConfirmedJoining !== undefined) extra.workerConfirmedJoining = body.workerConfirmedJoining;
+    } else {
+      if (body.interviewSlot) extra.interviewSlot = body.interviewSlot;
+      const note = body.recruiterPrivateNote ?? body.employerPrivateNotes;
+      if (note !== undefined) extra.recruiterPrivateNote = note;
+    }
+    if (body.declineOrRejectReason !== undefined) extra.declineOrRejectReason = body.declineOrRejectReason;
+
+    let nextStatus: string | null = null;
+    if (body.status && body.status !== row.status) {
+      const to = body.status as PipelineStage;
+      if (to === 'Offer Issued' || to === 'Accepted') throw badRequest('Use the offer letter to make or accept an offer.');
+      if (!canTransitionPipeline(role, row.status, to)) throw badRequest(`${isWorker ? 'You' : 'This account'} cannot move an application from "${row.status}" to "${to}".`);
+      nextStatus = to;
+    }
+
+    if (nextStatus) {
+      if (nextStatus === 'Withdrawn') await q.query(`UPDATE offers SET status = 'Declined', data = data || '{"withdrawn": true}'::jsonb, updated_at = now() WHERE application_id = $1 AND status = 'Issued'`, [row.id]);
+      await appendHistory(q, row.id, nextStatus, event(nextStatus, role, actorName, body.note ?? body.declineOrRejectReason), extra);
+      if (nextStatus === 'Joined') {
+        await markJoined(q, row.id, row.job_id);
+        await q.query(`UPDATE offers SET status = 'Joined Confirmed', updated_at = now() WHERE application_id = $1 AND status = 'Accepted' AND COALESCE((data->>'workerConfirmedJoining')::boolean, false)`, [row.id]);
+        if (!isWorker) extra.factoryMarkedJoinedAt = fmtDateTime(new Date());
+      }
+      if (!isWorker && (nextStatus === 'Shortlisted' || nextStatus === 'Interview')) {
+        pendingAlert.workerId = row.worker_id;
+        pendingAlert.input = { kind: nextStatus === 'Interview' ? 'interview' : 'shortlisted', jobTitle: row.job_title, company: row.company_name };
+      }
+      const eventType = nextStatus === 'Interview' ? 'INTERVIEW_SET' : nextStatus === 'Joined' ? 'JOINING_CONFIRMED' : 'SHORTLISTED';
+      await notify(q, {
+        role: isWorker ? 'employer' : 'worker',
+        recipientId: isWorker ? row.employer_id : row.worker_id,
+        eventType,
+        title: `Application update: ${nextStatus} — ${row.job_title}`,
+        body: `${actorName} moved the application for ${row.job_title} to "${nextStatus}".${body.note ? ' ' + body.note : ''}`,
+      });
+    } else if (Object.keys(extra).length) {
+      await q.query(`UPDATE applications SET data = data || $2::jsonb, updated_at = now() WHERE id = $1`, [row.id, JSON.stringify(extra)]);
+    }
+    if (nextStatus === 'Joined' && !isWorker) {
+      await q.query(`UPDATE applications SET data = data || $2::jsonb WHERE id = $1`, [row.id, JSON.stringify({ factoryMarkedJoinedAt: extra.factoryMarkedJoinedAt })]);
+    }
+  });
+  // After the change is saved. Best effort: a failed alert never undoes or delays it for long.
+  if (pendingAlert.workerId && pendingAlert.input) {
+    await sendWorkerStageAlert(c.ctx.db, pendingAlert.workerId, pendingAlert.input, c.ctx.config, c.ctx.deps);
+  }
+  return respond(c);
+};

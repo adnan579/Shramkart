@@ -1,8 +1,12 @@
 import type { Metadata, Viewport } from 'next';
-import { cookies } from 'next/headers';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import '../../src/index.css';
+import { AppProvider } from '../../src/shell/AppProvider';
+import { SiteShell } from '../../src/shell/SiteShell';
 import { languageForCookie } from '../../src/utils/routes';
-import { notoSans, notoSansDevanagari } from './fonts';
+import { cookies } from 'next/headers';
+import { pageSeed } from '../../server/next/page-data';
 
 const title = 'Shramkart — Direct Hands for Indian Industry';
 const description = 'Direct Hands for Indian Industry. Zero Middlemen. 100% Fair Pay. Two-way blue and grey-collar workforce marketplace connecting manufacturing units with verified ITI technicians.';
@@ -24,11 +28,18 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { themeColor: '#F5A524' };
 
+// Rendered per request (never prerendered): the page policy in proxy.ts needs a fresh nonce, and the shared data
+// below is specific to the person asking.
+export const dynamic = 'force-dynamic';
+
 export default async function PublicLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const lang = languageForCookie((await cookies()).get('hj_language')?.value);
+  const language = languageForCookie((await cookies()).get('hj_language')?.value);
+  const seed = await pageSeed();
   return (
-    <html lang={lang} className={`${notoSans.variable} ${notoSansDevanagari.variable}`} suppressHydrationWarning>
-      <body className="font-sans antialiased">{children}</body>
-    </html>
+    <AppProvider initialSnapshot={seed?.snapshot} initialSession={seed?.session} initialLanguage={language}>
+      <SiteShell>{children}</SiteShell>
+      <Analytics />
+      <SpeedInsights />
+    </AppProvider>
   );
 }

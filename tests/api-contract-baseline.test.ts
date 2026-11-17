@@ -1,23 +1,5 @@
 import { expect, it } from 'vitest';
-import { authRouter } from '../server/routes/auth.ts';
-import { bootstrapRouter } from '../server/routes/bootstrap.ts';
-import { workersRouter } from '../server/routes/workers.ts';
-import { employersRouter } from '../server/routes/employers.ts';
-import { jobsRouter } from '../server/routes/jobs.ts';
-import { applicationsRouter } from '../server/routes/applications.ts';
-import { offersRouter } from '../server/routes/offers.ts';
-import { creditsRouter, webhookRouter } from '../server/routes/credits.ts';
-import { adminRouter } from '../server/routes/admin.ts';
-import { adminAuthRouter } from '../server/routes/adminAuth.ts';
-import { communityRouter } from '../server/routes/community.ts';
-import { dpdpRouter } from '../server/routes/dpdp.ts';
-import { cronRouter } from '../server/routes/cron.ts';
-
-const routers = [
-  authRouter, bootstrapRouter, workersRouter, employersRouter, jobsRouter,
-  applicationsRouter, offersRouter, creditsRouter, webhookRouter,
-  adminAuthRouter, adminRouter, communityRouter, dpdpRouter, cronRouter,
-];
+import { routeInventory } from './helpers/native-client.ts';
 
 const baseline = [
   'ALL /api/cron/cleanup',
@@ -93,15 +75,9 @@ const baseline = [
   'PUT /api/jobs/:id',
 ];
 
-it('keeps the Phase 0 API method and path inventory stable', () => {
-  type RouteLayer = { route?: { path: string; methods: Record<string, boolean> } };
-  const actual = routers.flatMap((router) => (router as unknown as { stack: RouteLayer[] }).stack.flatMap((layer) => {
-    const route = layer.route;
-    if (!route) return [];
-    return Object.keys(route.methods)
-      .filter((method) => route.methods[method])
-      .map((method) => `${method === '_all' ? 'ALL' : method.toUpperCase()} /api${route.path}`);
-  })).concat(['GET /api/health']).sort();
-
-  expect(actual).toEqual(baseline);
+it('keeps the API method and path inventory stable', () => {
+  // Express listed the cron route as ALL; the route file now answers every method.
+  const actual = routeInventory().filter((r) => !r.includes('/api/cron/cleanup') && !r.endsWith('/api/*'));
+  expect(actual).toEqual(baseline.filter((r) => !r.includes('/api/cron/cleanup')));
+  expect(routeInventory().filter((r) => r.includes('/api/cron/cleanup')).map((r) => r.split(' ')[0]).sort()).toEqual(['DELETE', 'GET', 'PATCH', 'POST', 'PUT']);
 });

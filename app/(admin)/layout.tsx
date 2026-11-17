@@ -19,8 +19,7 @@ export const metadata: Metadata = {
 
 export default function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body>{children}</body>
-    </html>
+    // The root layout owns <html> and <body>; the console is always English whatever language the public site uses.
+    <div lang="en">{children}</div>
   );
 }

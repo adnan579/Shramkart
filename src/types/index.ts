@@ -438,7 +438,7 @@ export interface AuthSession {
   role: 'worker' | 'employer' | 'admin';
   workerId?: string;
   employerId?: string;
-  adminRole?: 'Verifier' | 'Support' | 'Trust & Safety';
+  adminRole?: 'Verifier' | 'Support' | 'Trust & Safety' | 'Finance' | 'Super Admin';
 }
 
 // M10: Enhanced Fee Report Workflow

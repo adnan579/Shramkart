@@ -20,7 +20,7 @@ const health = await get('/api/health');
 const healthBody = await health.json().catch(() => ({}));
 check('GET /api/health is 200 {ok:true}', health.status === 200 && healthBody.ok === true, JSON.stringify(healthBody));
 
-// --- API headers (native and Express-served routes)
+// --- API headers (every route under app/api)
 for (const path of ['/api/health', '/api/bootstrap', '/api/auth/me']) {
   const r = await get(path);
   check(`${path} sends nosniff + load-nothing CSP`, r.headers.get('x-content-type-options') === 'nosniff' && /default-src 'none'/.test(r.headers.get('content-security-policy') ?? ''), `status ${r.status}`);

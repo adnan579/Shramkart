@@ -32,7 +32,7 @@ Every server error is written to the Vercel logs as one JSON line with `"level":
 
 What is sent: error type, message and stack, the method, the path without query string (long numbers such as phone numbers are replaced), the status, the release (the first 12 characters of the git commit) and the environment. Database addresses and tokens in messages are removed. Request bodies, cookies and headers are never sent.
 
-What is covered: API errors (both the Express routes and the native Next.js routes), start-up failures (tagged with `stage`: config, database or migrations), and errors Next.js catches while rendering a page.
+What is covered: API errors (every `app/api` route), start-up failures (tagged with `stage`: config, database or migrations), and errors Next.js catches while rendering a page.
 
 Limits you should know about:
 - It is a light reporter, not the full Sentry SDK. There are no breadcrumbs, no performance data and no source maps, so stack traces show the built file names.
